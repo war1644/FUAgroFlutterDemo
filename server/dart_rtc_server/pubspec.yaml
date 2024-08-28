@@ -1,0 +1,10 @@
+name: dart_rtc_server
+version: 0.1.0
+publish_to: none
+description: A Dart WebRTC signaling server
+environment:
+  sdk: '^3.4.0'
+dependencies:
+  args: any
+  dart_rtc_common:
+    path: ../dart_rtc_common

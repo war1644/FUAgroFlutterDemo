@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Example</title>
+</head>
+<body>
+    <h1>WebRTC Video/Audio Stream</h1>
+    <video id="localVideo" autoplay playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <script>
+        const signalingServerUrl = "ws://localhost:8234"; // 信令服务器的地址
+        const ws = new WebSocket(signalingServerUrl);
+
+        let localStream;
+        let peerConnection;
+
+        ws.onopen = () => {
+            console.log("Connected to the signaling server");
+        };
+
+        ws.onmessage = (message) => {
+            const data = JSON.parse(message.data);
+            switch(data.type) {
+                case "offer":
+                    handleOffer(data.offer);
+                    break;
+                case "answer":
+                    handleAnswer(data.answer);
+                    break;
+                case "candidate":
+                    handleCandidate(data.candidate);
+                    break;
+                default:
+                    break;
+            }
+        };
+
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(stream => {
+                localStream = stream;
+                document.getElementById('localVideo').srcObject = stream;
+
+                const configuration = {
+                    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+                };
+
+                peerConnection = new RTCPeerConnection(configuration);
+                peerConnection.addStream(localStream);
+
+                peerConnection.onaddstream = (event) => {
+                    document.getElementById('remoteVideo').srcObject = event.stream;
+                };
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        ws.send(JSON.stringify({ 
+                            type: "candidate", 
+                            candidate: event.candidate 
+                        }));
+                    }
+                };
+
+                // 发送 offer 给信令服务器
+                peerConnection.createOffer()
+                    .then(offer => {
+                        return peerConnection.setLocalDescription(offer);
+                    })
+                    .then(() => {
+                        ws.send(JSON.stringify({ 
+                            type: "offer", 
+                            offer: peerConnection.localDescription 
+                        }));
+                    });
+            })
+            .catch(error => console.error("Error accessing media devices.", error));
+
+        function handleOffer(offer) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+                .then(() => {
+                    return peerConnection.createAnswer();
+                })
+                .then(answer => {
+                    return peerConnection.setLocalDescription(answer);
+                })
+                .then(() => {
+                    ws.send(JSON.stringify({ 
+                        type: "answer", 
+                        answer: peerConnection.localDescription 
+                    }));
+                });
+        }
+
+        function handleAnswer(answer) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        }
+
+        function handleCandidate(candidate) {
+            peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        }
+    </script>
+</body>
+</html>
